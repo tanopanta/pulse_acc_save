@@ -3,7 +3,11 @@
 #include "utility/MPU9250.h"
 #include <vector>
 
+
+// https://github.com/tanopanta/MyPulseSensorPlayground
 #include <MyPulseSensorPlayground.h>
+
+// https://github.com/tanopanta/drawPulse
 #include <drawPulse.h>
 
 const int PIN_INPUT = 36;
