@@ -14,6 +14,7 @@ const char* fnameAcc = "/pulse/outacc.csv";
 
 PulseSensorPlayground pulseSensor;
 DrawPulse drawPulse;
+
 MPU9250 IMU;
 
 Ticker tickerSensor; // センサの値を読む
@@ -43,73 +44,81 @@ void setup() {
     initPulseSensor();
     initAccSensor();
 
+    drawPulse.init();
 
-    M5.lcd.println("Push Button A to Start.");
     while(!M5.BtnA.wasReleased()) {
-      M5.update(); 
+        M5.update();
+        int y = analogRead(PIN_INPUT);
+        drawPulse.addValue(y);
+        drawPulse.showMsg("Push Button A to Start.");
+        delay(2);
     }
     M5.lcd.clear(BLACK);
-    drawPulse.init();
+
     // 16ミリ秒ごと(62.5Hz)にセンサーリード
     tickerSensor.attach_ms(16, _readSensor);
     // 30秒ごとにフラグ（buffSaveFlg）を立てる
     tickerWriteData.attach_ms(30000, _buffSave);
+
+    // バッファをヒープ領域に確保
+    // (Vectorはデータが２の累乗個（ぐらい？）を超えると、再確保ー＞コピーをするので余裕を持っておけばオーバヘッドが減る)
     sdBuff.reserve(2048);
 }
 
 unsigned int loopcount = 0;
 void loop() {
-    
     //リードフラグが立っているとき読み取り
+    // 処理時間　ミリ秒
     if(readSensorFlg) {
         readSensorFlg = false;
         sensorData s;
         getAcc(&s);
         sdBuff.push_back(s);
+
+        return;
     }
 
     // 脈波の立ち上がり発見時SDに書き込み（だいたい1秒に一回ぐらい）
+    // 処理時間30ミリ秒
     if(pulseSensor.sawStartOfBeat()) {
         int rri = pulseSensor.getInterBeatIntervalMs(); //心拍間隔の取得
+        unsigned long ms = pulseSensor.getLastBeatTime();
+
         File file = SD.open(fname, FILE_APPEND);
         if(!file) {
           Serial.println("SD card naiyo~~~");
         } else {
-          file.println(rri);
+          file.printf("%lu, %d\n", ms, rri);
         }
         file.close();
-        drawPulse.showMsg("BPM:" + String(60000/ rri));
+        
+        // 心拍数を表示
+        M5.Lcd.setCursor(0, 0);
+        M5.Lcd.setTextSize(3);
+        M5.Lcd.printf("BPM: %03d", 60000 / rri);
+
+        return;
     }
 
     // セーブフラグが立っているとき保存
-    if(buffSaveFlg) {
-        unsigned long start_time = millis();
+    // 処理時間300ミリ秒
+    if(buffSaveFlg) { 
         Serial.println("SD write...");
         File file = SD.open(fnameAcc, FILE_APPEND);
         if(!file) {
             Serial.println("SD card naiyo~~~");
         } else {
             for(int i = 0; i < sdBuff.size(); i++) {
-                //char buf[64];
-                //sprintf(buf, "%d, %d, %d, %d, %d, %d", sdBuff[i].accX, sdBuff[i].accY,sdBuff[i].accZ, sdBuff[i].gyroX, sdBuff[i].gyroY, sdBuff[i].gyroZ);
-                file.printf("%d, %d, %d, %d, %d, %d", sdBuff[i].accX, sdBuff[i].accY,sdBuff[i].accZ, sdBuff[i].gyroX, sdBuff[i].gyroY, sdBuff[i].gyroZ);
-                
+                file.printf("%d, %d, %d, %d, %d, %d\n", sdBuff[i].accX, sdBuff[i].accY,sdBuff[i].accZ, sdBuff[i].gyroX, sdBuff[i].gyroY, sdBuff[i].gyroZ);
             }
         }
         file.close();
         buffSaveFlg = false;
         sdBuff.clear();
-        unsigned long end_time = millis();
-        Serial.println(end_time - start_time);
         return;
     }
 
-    if(loopcount++ % 20 == 0) {
-        int y = pulseSensor.getLatestSample();
-        drawPulse.addValue(y);
-    }
-
-    delay(1);
+    delay(1); // なにも処理をしなかったときだけ
 }
 
 
@@ -124,7 +133,7 @@ void initPulseSensor() {
 }
 
 void initAccSensor() {
-    IMU.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
+    //IMU.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
     delay(10);
     IMU.calibrateMPU9250(IMU.gyroBias, IMU.accelBias);
     delay(10);
